@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Catatan Kas - Servis Laptop (Cloud Supabase)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase JS Client CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- SheetJS CDN untuk Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    #sidebar {
+      transition: margin-left 0.25s ease-in-out, transform 0.25s ease-in-out;
+    }
+    .sidebar-desktop-closed {
+      margin-left: -16rem !important;
+    }
+    .row-actions {
+      opacity: 1;
+    }
+    @media (min-width: 768px) {
+      .row-actions {
+        opacity: 0;
+        transition: opacity 0.15s ease-in-out;
+      }
+      tr:hover .row-actions {
+        opacity: 1;
+      }
+    }
+    .uppercase-input {
+      text-transform: uppercase;
+    }
+    @media (max-width: 640px) {
+      input, select, textarea {
+        font-size: 16px !important;
+      }
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: #cbd5e1;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased font-sans">
+  
+  <!-- BACKDROP OVERLAY UNTUK HP -->
+  <div id="mobileBackdrop" onclick="closeMobileMenu()" class="fixed inset-0 bg-black/60 z-40 hidden md:hidden transition-opacity duration-300"></div>
+
+  <!-- NAVBAR HP -->
+  <header class="md:hidden bg-slate-900 text-white sticky top-0 z-30 px-4 py-3 shadow-md flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <button onclick="openMobileMenu()" class="p-2 -ml-1 text-slate-300 hover:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 active:bg-slate-800">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+        </svg>
+      </button>
+      <div class="flex items-center space-x-2">
+        <div class="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-xs">CK</div>
+        <span class="font-bold text-base tracking-tight">Catatan Kas</span>
+      </div>
+    </div>
+
+    <div class="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-xs">
+      <button id="mobile-quick-petty" onclick="switchBook('petty')" class="px-2.5 py-1 rounded font-medium transition bg-blue-600 text-white">Petty</button>
+      <button id="mobile-quick-sparepart" onclick="switchBook('sparepart')" class="px-2.5 py-1 rounded font-medium text-slate-300 hover:text-white transition">Part</button>
+    </div>
+  </header>
+
+  <div class="min-h-screen flex flex-col md:flex-row overflow-x-hidden">
+    
+    <!-- SIDEBAR -->
+    <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between shadow-2xl md:shadow-xl transform -translate-x-full md:translate-x-0">
+      <div>
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-base shadow-md">CK</div>
+            <div>
+              <h1 class="font-bold text-base leading-tight">Catatan Kas</h1>
+              <p id="supabaseStatus" class="text-[11px] text-amber-400 font-mono flex items-center space-x-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-ping"></span>
+                <span>Menghubungkan...</span>
+              </p>
+            </div>
+          </div>
+          <button onclick="toggleDesktopSidebar()" title="Sembunyikan Sidebar" class="hidden md:flex p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
+          </button>
+          <button onclick="closeMobileMenu()" class="md:hidden text-slate-400 hover:text-white p-1.5 rounded-lg focus:outline-none">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
+        </div>
+
+        <nav class="p-3 space-y-1.5">
+          <p class="px-3 pt-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Buku Kas</p>
+          <button id="nav-petty" onclick="switchBook('petty')" class="w-full text-left px-4 py-3 rounded-xl flex items-center justify-between font-medium transition-colors bg-blue-600 text-white shadow">
+            <span class="flex items-center space-x-3">
+              <svg class="w-5 h-5 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+              <span>Petty Cash</span>
+            </span>
+            <span id="badge-count-petty" class="text-xs bg-slate-800/80 px-2.5 py-0.5 rounded-full font-mono">0</span>
+          </button>
+
+          <button id="nav-sparepart" onclick="switchBook('sparepart')" class="w-full text-left px-4 py-3 rounded-xl flex items-center justify-between font-medium transition-colors text-slate-300 hover:bg-slate-800">
+            <span class="flex items-center space-x-3">
+              <svg class="w-5 h-5 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
+              <span>Sparepart</span>
+            </span>
+            <span id="badge-count-sparepart" class="text-xs bg-slate-800/80 px-2.5 py-0.5 rounded-full font-mono">0</span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="p-3.5 border-t border-slate-800 space-y-2">
+        <label class="w-full flex items-center justify-center space-x-2 bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white text-xs py-2 px-3 rounded-xl cursor-pointer transition font-medium shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+          <span>Impor Excel (.xlsx)</span>
+          <input type="file" id="excelFileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleExcelImport(event)">
+        </label>
+
+        <button onclick="exportToExcel()" class="w-full flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 px-3 rounded-xl transition font-medium">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+          <span>Unduh Excel (.xlsx)</span>
+        </button>
+
+        <button onclick="confirmNewMonth()" class="w-full flex items-center justify-center space-x-2 bg-amber-900/40 hover:bg-amber-600 text-amber-200 hover:text-white text-xs py-2 px-3 rounded-xl transition font-medium border border-amber-800/50">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+          <span>Tutup & Bulan Baru</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 p-3.5 sm:p-5 md:p-8 overflow-y-auto w-full transition-all duration-300">
+      
+      <!-- HEADER DESKTOP TOGGLE -->
+      <div class="hidden md:flex items-center justify-between mb-4">
+        <button id="btnOpenDesktopSidebar" onclick="toggleDesktopSidebar()" class="flex items-center space-x-2 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 px-3.5 py-2 rounded-xl border border-slate-200 shadow-sm text-xs font-semibold transition">
+          <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
+          <span id="labelDesktopToggle">Tutup Menu</span>
+        </button>
+        <div class="text-xs text-slate-400 font-medium flex items-center space-x-2">
+          <span>Buku Kas:</span>
+          <span id="activeBookBadge" class="bg-blue-100 text-blue-700 font-bold px-2.5 py-0.5 rounded-full uppercase text-[11px]">Petty Cash</span>
+        </div>
+      </div>
+
+      <!-- HEADER LAPORAN -->
+      <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 mb-4 sm:mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
+        <div class="flex-1">
+          <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Judul Laporan</label>
+          <input type="text" id="reportTitle" onchange="updateTitle(this.value)" class="w-full font-bold text-base sm:text-lg md:text-xl text-slate-800 border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-none transition py-0.5">
+        </div>
+        <div class="flex items-center justify-between sm:justify-end space-x-3 bg-slate-50 p-2 sm:p-2.5 rounded-xl border border-slate-200">
+          <label class="text-xs font-semibold text-slate-500 uppercase">Saldo Awal:</label>
+          <div class="relative">
+            <span class="absolute left-2.5 top-2 text-xs text-slate-400">Rp</span>
+            <input type="text" id="initialBalanceInput" onchange="updateInitialBalance(this.value)" class="font-mono font-bold text-slate-800 pl-8 pr-2.5 py-1.5 w-36 text-right rounded-lg border border-slate-300 focus:border-blue-500 focus:outline-none text-sm">
+          </div>
+        </div>
+      </div>
+
+      <!-- KARTU RINGKASAN -->
+      <div id="summaryCards" class="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 mb-4 sm:mb-6"></div>
+
+      <!-- FORMULIR INPUT -->
+      <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 mb-4 sm:mb-6">
+        <div class="flex items-center justify-between mb-3.5">
+          <h3 class="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2">
+            <span class="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
+            <span id="formTitle">Tambah Catatan Baru</span>
+          </h3>
+          <span id="editIndicator" class="hidden text-[11px] bg-amber-100 text-amber-800 font-semibold px-2.5 py-0.5 rounded-full">Mode Edit Data</span>
+        </div>
+
+        <form id="entryForm" onsubmit="handleFormSubmit(event)" class="space-y-3 sm:space-y-4">
+          <input type="hidden" id="editId" value="">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
+            <div class="md:col-span-1">
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Tanggal</label>
+              <input type="date" id="inputDate" required class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+            </div>
+            <div class="md:col-span-1">
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Bukti (Opsional)</label>
+              <input type="text" id="inputProof" placeholder="No. Nota" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+            </div>
+            <div class="sm:col-span-2 md:col-span-2">
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Keterangan</label>
+              <input type="text" id="inputDesc" required placeholder="NAMA BARANG / TRANSAKSI" class="uppercase-input w-full text-sm border border-slate-300 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium bg-white">
+            </div>
+            <div class="md:col-span-1">
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Jenis</label>
+              <select id="inputType" onchange="handleTypeChange()" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium">
+                <option value="keluar">Keluar (Pengeluaran)</option>
+                <option value="topup">Top Up (Dana Masuk)</option>
+              </select>
+            </div>
+            <div class="md:col-span-1">
+              <label id="labelAmount" class="block text-xs font-semibold text-slate-500 mb-1">Nominal (Rp)</label>
+              <input type="text" id="inputAmount" required placeholder="0" oninput="formatNumberInput(this)" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2.5 font-mono text-right focus:ring-2 focus:ring-blue-500 focus:outline-none font-bold bg-white">
+            </div>
+          </div>
+
+          <div id="sparepartExtraFields" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 pt-2 border-t border-slate-100 hidden">
+            <div class="md:col-span-3">
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Status Part</label>
+              <input type="text" id="inputStatus" list="statusList" placeholder="SOLVED / STOCK / dll" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase-input bg-white">
+              <datalist id="statusList">
+                <option value="SOLVED"></option>
+                <option value="STOCK"></option>
+                <option value="MENUNGGU PART"></option>
+                <option value="BELUM DI BAYAR"></option>
+                <option value="SOLVED ( GARANSI )"></option>
+              </datalist>
+            </div>
+            <div class="md:col-span-3">
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Harga Jual ke User (Rp)</label>
+              <input type="text" id="inputSalePrice" placeholder="0" oninput="formatNumberInput(this)" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2.5 font-mono text-right focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+            </div>
+          </div>
+
+          <div class="flex items-center justify-end space-x-2 pt-1.5">
+            <button type="button" id="btnCancelEdit" onclick="cancelEdit()" class="hidden px-4 py-2.5 border border-slate-300 text-slate-600 rounded-xl text-sm hover:bg-slate-50 transition">Batal</button>
+            <button type="submit" id="btnSubmit" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm px-6 py-2.5 rounded-xl shadow-md transition flex items-center justify-center space-x-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+              <span id="btnSubmitText">Simpan Catatan</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- FILTER & TABEL -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-3 sm:p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/50">
+          <div class="relative w-full sm:w-80">
+            <input type="text" id="searchInput" oninput="renderTable()" placeholder="Cari keterangan, bukti, status..." class="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+            <svg class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          </div>
+          <div id="filterCount" class="text-xs font-semibold text-slate-500 text-right">Menampilkan 0 catatan</div>
+        </div>
+
+        <div class="overflow-x-auto custom-scrollbar">
+          <table class="w-full text-left text-sm whitespace-nowrap">
+            <thead class="bg-slate-100/90 text-slate-600 text-xs uppercase font-semibold border-b border-slate-200">
+              <tr id="tableHeaderRow"></tr>
+            </thead>
+            <tbody id="tableBody" class="divide-y divide-slate-200 font-sans"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       KONFIGURASI SUPABASE (MASUKKAN DATA PROYEK ANDA DI SINI)
+       ========================================================================== */
+    const SUPABASE_URL = "https://ceoxvrmnaxbozhtycxxu.supabase.co"
+    const SUPABASE_ANON_KEY = "sb_publishable_Y1TfGnIKUOXTvfGMx-oErw_LmOcexWG"; // Contoh: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    let supabaseClient = null;
+    let currentTab = "petty";
+
+    function initSupabase() {
+      const statusEl = document.getElementById("supabaseStatus");
+      if (SUPABASE_URL === "MASUKKAN_URL_SUPABASE_ANDA" || !SUPABASE_URL) {
+        statusEl.className = "text-[11px] text-rose-400 font-mono flex items-center space-x-1";
+        statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block"></span><span>Supabase Belum Diisi</span>`;
+        return false;
+      }
+      try {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        statusEl.className = "text-[11px] text-emerald-400 font-mono flex items-center space-x-1";
+        statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span><span>Supabase Cloud Terhubung</span>`;
+        return true;
+      } catch (err) {
+        console.error(err);
+        statusEl.className = "text-[11px] text-rose-400 font-mono";
+        statusEl.innerText = "Koneksi Gagal";
+        return false;
+      }
+    }
+
+    /* ==========================================================================
+       SUPABASE DATABASE CRUD FUNCTIONS
+       ========================================================================== */
+    async function dbGetMeta(bookKey) {
+      if (!supabaseClient) return { bookKey, title: `PENGELUARAN ${bookKey.toUpperCase()}`, initialBalance: 0 };
+      const { data, error } = await supabaseClient.from("buku_kas").select("*").eq("book_key", bookKey).single();
+      if (error && error.code !== "PGRST116") console.error(error);
+      return data ? { bookKey: data.book_key, title: data.title, initialBalance: Number(data.initial_balance) } : null;
+    }
+
+    async function dbSetMeta(metaObj) {
+      if (!supabaseClient) return;
+      await supabaseClient.from("buku_kas").upsert({
+        book_key: metaObj.bookKey,
+        title: metaObj.title,
+        initial_balance: metaObj.initialBalance
+      });
+    }
+
+    async function dbGetTransactions(bookKey) {
+      if (!supabaseClient) return [];
+      const { data, error } = await supabaseClient
+        .from("transaksi_kas")
+        .select("*")
+        .eq("book_key", bookKey)
+        .order("id", { ascending: true });
+      if (error) console.error(error);
+      return (data || []).map(r => ({
+        id: r.id,
+        bookKey: r.book_key,
+        tanggal: r.tanggal,
+        bukti: r.bukti,
+        keterangan: r.keterangan,
+        topup: Number(r.topup) || 0,
+        keluar: Number(r.keluar) || 0,
+        status: r.status,
+        hargaJual: Number(r.harga_jual) || 0
+      }));
+    }
+
+    async function dbAddTransaction(txData) {
+      if (!supabaseClient) return;
+      const { error } = await supabaseClient.from("transaksi_kas").insert([{
+        book_key: txData.bookKey,
+        tanggal: txData.tanggal,
+        bukti: txData.bukti,
+        keterangan: txData.keterangan,
+        topup: txData.topup,
+        keluar: txData.keluar,
+        status: txData.status,
+        harga_jual: txData.hargaJual
+      }]);
+      if (error) alert("Gagal menyimpan ke Supabase: " + error.message);
+    }
+
+    async function dbUpdateTransaction(txData) {
+      if (!supabaseClient) return;
+      const { error } = await supabaseClient.from("transaksi_kas").update({
+        tanggal: txData.tanggal,
+        bukti: txData.bukti,
+        keterangan: txData.keterangan,
+        topup: txData.topup,
+        keluar: txData.keluar,
+        status: txData.status,
+        harga_jual: txData.hargaJual
+      }).eq("id", txData.id);
+      if (error) alert("Gagal update Supabase: " + error.message);
+    }
+
+    async function dbDeleteTransaction(id) {
+      if (!supabaseClient) return;
+      const { error } = await supabaseClient.from("transaksi_kas").delete().eq("id", id);
+      if (error) alert("Gagal menghapus dari Supabase: " + error.message);
+    }
+
+    async function dbClearTransactions(bookKey) {
+      if (!supabaseClient) return;
+      await supabaseClient.from("transaksi_kas").delete().eq("book_key", bookKey);
+    }
+
+    /* ==========================================================================
+       UTILITIES & KALKULASI SALDO
+       ========================================================================== */
+    function formatRupiah(num) {
+      if (num === null || num === undefined || isNaN(num)) return "Rp 0";
+      const isNegative = num < 0;
+      const absoluteVal = Math.abs(Math.round(num));
+      return (isNegative ? "-Rp " : "Rp ") + new Intl.NumberFormat("id-ID").format(absoluteVal);
+    }
+
+    function parseRupiahInput(val) {
+      if (!val) return 0;
+      return parseInt(val.toString().replace(/[^0-9]/g, ""), 10) || 0;
+    }
+
+    function formatNumberInput(input) {
+      const val = parseRupiahInput(input.value);
+      input.value = val === 0 ? "" : new Intl.NumberFormat("id-ID").format(val);
+    }
+
+    function formatDateDisplay(isoDateStr) {
+      if (!isoDateStr) return "-";
+      const parts = isoDateStr.split("-");
+      return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : isoDateStr;
+    }
+
+    function getTodayISO() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    }
+
+    function getMonthNameIndo(monthIndex) {
+      const months = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"];
+      return months[monthIndex];
+    }
+
+    function escapeHtml(text) {
+      return (text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    async function getComputedData(bookKey) {
+      let meta = await dbGetMeta(bookKey);
+      if (!meta) {
+        const now = new Date();
+        const defTitle = `PENGELUARAN ${bookKey === 'petty' ? 'PETTY CASH' : 'SPAREPART'} BULAN ${getMonthNameIndo(now.getMonth())} ${now.getFullYear()}`;
+        meta = { bookKey, title: defTitle, initialBalance: 0 };
+        await dbSetMeta(meta);
+      }
+
+      const entries = await dbGetTransactions(bookKey);
+      let currentBalance = Number(meta.initialBalance) || 0;
+      let totalTopUp = 0;
+      let totalKeluar = 0;
+      let totalProfit = 0;
+
+      const entriesWithSaldo = entries.map((entry) => {
+        const topup = Number(entry.topup) || 0;
+        const keluar = Number(entry.keluar) || 0;
+        const hargaJual = Number(entry.hargaJual) || 0;
+
+        totalTopUp += topup;
+        totalKeluar += keluar;
+        currentBalance = currentBalance + topup - keluar;
+
+        if (bookKey === "sparepart" && hargaJual > 0) {
+          totalProfit += (hargaJual - keluar);
+        }
+
+        return { ...entry, calculatedBalance: currentBalance };
+      });
+
+      return {
+        meta,
+        initialBalance: Number(meta.initialBalance) || 0,
+        entries: entriesWithSaldo,
+        totalTopUp,
+        totalKeluar,
+        finalBalance: currentBalance,
+        totalProfit
+      };
+    }
+
+    /* ==========================================================================
+       RENDER TAMPILAN
+       ========================================================================== */
+    async function switchBook(bookKey) {
+      currentTab = bookKey;
+      closeMobileMenu();
+
+      const navPetty = document.getElementById("nav-petty");
+      const navSpare = document.getElementById("nav-sparepart");
+      const mPetty = document.getElementById("mobile-quick-petty");
+      const mSpare = document.getElementById("mobile-quick-sparepart");
+      const desktopBadge = document.getElementById("activeBookBadge");
+
+      if (bookKey === "petty") {
+        navPetty.className = "w-full text-left px-4 py-3 rounded-xl flex items-center justify-between font-medium transition-colors bg-blue-600 text-white shadow";
+        navSpare.className = "w-full text-left px-4 py-3 rounded-xl flex items-center justify-between font-medium transition-colors text-slate-300 hover:bg-slate-800";
+        mPetty.className = "px-2.5 py-1 rounded font-medium transition bg-blue-600 text-white";
+        mSpare.className = "px-2.5 py-1 rounded font-medium text-slate-300 hover:text-white transition";
+        desktopBadge.className = "bg-blue-100 text-blue-700 font-bold px-2.5 py-0.5 rounded-full uppercase text-[11px]";
+        desktopBadge.innerText = "Petty Cash";
+        document.getElementById("sparepartExtraFields").classList.add("hidden");
+      } else {
+        navSpare.className = "w-full text-left px-4 py-3 rounded-xl flex items-center justify-between font-medium transition-colors bg-blue-600 text-white shadow";
+        navPetty.className = "w-full text-left px-4 py-3 rounded-xl flex items-center justify-between font-medium transition-colors text-slate-300 hover:bg-slate-800";
+        mSpare.className = "px-2.5 py-1 rounded font-medium transition bg-blue-600 text-white";
+        mPetty.className = "px-2.5 py-1 rounded font-medium text-slate-300 hover:text-white transition";
+        desktopBadge.className = "bg-emerald-100 text-emerald-700 font-bold px-2.5 py-0.5 rounded-full uppercase text-[11px]";
+        desktopBadge.innerText = "Sparepart";
+        document.getElementById("sparepartExtraFields").classList.remove("hidden");
+      }
+
+      cancelEdit();
+      await renderAll();
+    }
+
+    async function renderAll() {
+      const data = await getComputedData(currentTab);
+      document.getElementById("reportTitle").value = data.meta.title;
+      document.getElementById("initialBalanceInput").value = new Intl.NumberFormat("id-ID").format(data.initialBalance || 0);
+
+      renderSummary(data);
+      renderTableData(data);
+      updateNavBadges();
+    }
+
+    function renderSummary(computed) {
+      const isSparepart = currentTab === "sparepart";
+      const cardsContainer = document.getElementById("summaryCards");
+      const isMinus = computed.finalBalance < 0;
+
+      let html = `
+        <div class="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm">
+          <p class="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">Saldo Awal</p>
+          <p class="text-sm sm:text-lg md:text-xl font-bold font-mono text-slate-700 truncate">${formatRupiah(computed.initialBalance)}</p>
+        </div>
+        <div class="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm">
+          <p class="text-[10px] sm:text-xs font-bold text-emerald-500 uppercase tracking-wider mb-0.5 sm:mb-1">Total Top Up</p>
+          <p class="text-sm sm:text-lg md:text-xl font-bold font-mono text-emerald-600 truncate">+${formatRupiah(computed.totalTopUp)}</p>
+        </div>
+        <div class="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm">
+          <p class="text-[10px] sm:text-xs font-bold text-rose-500 uppercase tracking-wider mb-0.5 sm:mb-1">${isSparepart ? 'Modal Part' : 'Total Keluar'}</p>
+          <p class="text-sm sm:text-lg md:text-xl font-bold font-mono text-rose-600 truncate">-${formatRupiah(computed.totalKeluar)}</p>
+        </div>
+        <div class="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm ${isMinus ? 'bg-rose-50 border-rose-200' : ''}">
+          <p class="text-[10px] sm:text-xs font-bold ${isMinus ? 'text-rose-600 font-bold' : 'text-slate-500'} uppercase tracking-wider mb-0.5 sm:mb-1">Saldo Akhir</p>
+          <p class="text-sm sm:text-lg md:text-xl font-bold font-mono ${isMinus ? 'text-rose-600' : 'text-slate-900'} truncate">${formatRupiah(computed.finalBalance)}</p>
+        </div>
+      `;
+
+      if (isSparepart) {
+        cardsContainer.className = "grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3 mb-4 sm:mb-6";
+        html += `
+          <div class="bg-blue-50/80 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-blue-200 shadow-sm col-span-2 md:col-span-1">
+            <p class="text-[10px] sm:text-xs font-bold text-blue-700 uppercase tracking-wider mb-0.5 sm:mb-1">Est. Laba Part</p>
+            <p class="text-sm sm:text-lg md:text-xl font-bold font-mono text-blue-700 truncate">${formatRupiah(computed.totalProfit)}</p>
+          </div>
+        `;
+      } else {
+        cardsContainer.className = "grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 mb-4 sm:mb-6";
+      }
+
+      cardsContainer.innerHTML = html;
+    }
+
+    async function renderTable() {
+      const data = await getComputedData(currentTab);
+      renderTableData(data);
+    }
+
+    function renderTableData(computed) {
+      const isSparepart = currentTab === "sparepart";
+      const query = (document.getElementById("searchInput").value || "").trim().toLowerCase();
+
+      const thead = document.getElementById("tableHeaderRow");
+      thead.innerHTML = `
+        <th class="py-3 px-3 w-10 text-center">#</th>
+        <th class="py-3 px-3">Tanggal</th>
+        <th class="py-3 px-3">Bukti</th>
+        <th class="py-3 px-4">Keterangan</th>
+        ${isSparepart ? '<th class="py-3 px-3">Status</th><th class="py-3 px-3 text-right">Modal (Keluar)</th><th class="py-3 px-3 text-right">Harga Jual</th>' : ''}
+        <th class="py-3 px-3 text-right text-emerald-600 bg-emerald-50/50">Top Up</th>
+        ${!isSparepart ? '<th class="py-3 px-3 text-right text-rose-600">Keluar</th>' : ''}
+        <th class="py-3 px-4 text-right">Saldo</th>
+        <th class="py-3 px-3 text-center w-24">Aksi</th>
+      `;
+
+      const filtered = computed.entries.filter(item => {
+        if (!query) return true;
+        const ket = (item.keterangan || "").toLowerCase();
+        const bukti = (item.bukti || "").toLowerCase();
+        const status = (item.status || "").toLowerCase();
+        return ket.includes(query) || bukti.includes(query) || status.includes(query);
+      });
+
+      document.getElementById("filterCount").innerText = `${filtered.length} dari ${computed.entries.length} catatan`;
+
+      const tbody = document.getElementById("tableBody");
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center py-12 text-slate-400">Belum ada catatan transaksi pada Supabase.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((row, idx) => {
+        const topupText = row.topup > 0 ? `<span class="text-emerald-600 font-bold font-mono">${formatRupiah(row.topup)}</span>` : '<span class="text-slate-300 font-mono">-</span>';
+        const keluarText = row.keluar > 0 ? `<span class="text-rose-600 font-semibold font-mono">${formatRupiah(row.keluar)}</span>` : '<span class="text-slate-300 font-mono">-</span>';
+        const jualText = row.hargaJual > 0 ? `<span class="text-blue-600 font-semibold font-mono">${formatRupiah(row.hargaJual)}</span>` : '<span class="text-slate-300 font-mono">-</span>';
+
+        return `
+          <tr class="hover:bg-slate-50 transition-colors group">
+            <td class="py-2.5 px-3 text-center text-xs text-slate-400 font-mono">${idx + 1}</td>
+            <td class="py-2.5 px-3 font-medium text-slate-700 font-mono text-xs">${formatDateDisplay(row.tanggal)}</td>
+            <td class="py-2.5 px-3 text-xs text-slate-500 font-mono">${row.bukti || '-'}</td>
+            <td class="py-2.5 px-4 font-semibold text-slate-800">${escapeHtml(row.keterangan)}</td>
+            ${isSparepart ? `<td class="py-2.5 px-3">${renderStatusBadge(row.status)}</td>` : ''}
+            ${isSparepart ? `<td class="py-2.5 px-3 text-right">${keluarText}</td>` : ''}
+            ${isSparepart ? `<td class="py-2.5 px-3 text-right">${jualText}</td>` : ''}
+            <td class="py-2.5 px-3 text-right bg-emerald-50/20">${topupText}</td>
+            ${!isSparepart ? `<td class="py-2.5 px-3 text-right">${keluarText}</td>` : ''}
+            <td class="py-2.5 px-4 text-right font-mono font-bold ${row.calculatedBalance < 0 ? 'text-rose-600' : 'text-slate-900'}">
+              ${formatRupiah(row.calculatedBalance)}
+            </td>
+            <td class="py-2.5 px-3 text-center">
+              <div class="row-actions flex items-center justify-center space-x-2">
+                <button onclick="editRowById(${row.id})" title="Edit" class="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 active:bg-blue-100 transition">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                </button>
+                <button onclick="deleteRowById(${row.id})" title="Hapus" class="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 active:bg-rose-100 transition">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function renderStatusBadge(status) {
+      if (!status) return '<span class="text-slate-300 font-mono">-</span>';
+      const clean = status.trim().toUpperCase();
+      let colorClass = "bg-amber-100 text-amber-800 border-amber-300";
+      if (clean === "SOLVED" || clean.startsWith("SOLVED")) colorClass = "bg-emerald-100 text-emerald-800 border-emerald-300";
+      else if (clean === "STOCK") colorClass = "bg-blue-100 text-blue-800 border-blue-300";
+      return `<span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full border ${colorClass}">${escapeHtml(clean)}</span>`;
+    }
+
+    async function updateNavBadges() {
+      const pettyItems = await dbGetTransactions("petty");
+      const spareItems = await dbGetTransactions("sparepart");
+      document.getElementById("badge-count-petty").innerText = pettyItems.length;
+      document.getElementById("badge-count-sparepart").innerText = spareItems.length;
+    }
+
+    function handleTypeChange() {
+      const type = document.getElementById("inputType").value;
+      const label = document.getElementById("labelAmount");
+      if (type === "topup") {
+        label.innerText = "Nominal Top Up (Rp)";
+        label.classList.add("text-emerald-600");
+      } else {
+        label.innerText = currentTab === "sparepart" ? "Modal Part (Keluar)" : "Nominal Keluar (Rp)";
+        label.classList.remove("text-emerald-600");
+      }
+    }
+
+    /* ==========================================================================
+       FORM ACTIONS
+       ========================================================================== */
+    function resetForm() {
+      document.getElementById("editId").value = "";
+      document.getElementById("inputDate").value = getTodayISO();
+      document.getElementById("inputProof").value = "";
+      document.getElementById("inputDesc").value = "";
+      document.getElementById("inputType").value = "keluar";
+      document.getElementById("inputAmount").value = "";
+      document.getElementById("inputStatus").value = "";
+      document.getElementById("inputSalePrice").value = "";
+
+      handleTypeChange();
+      document.getElementById("btnSubmitText").innerText = "Simpan Catatan";
+      document.getElementById("formTitle").innerText = "Tambah Catatan Baru";
+      document.getElementById("editIndicator").classList.add("hidden");
+      document.getElementById("btnCancelEdit").classList.add("hidden");
+    }
+
+    async function handleFormSubmit(e) {
+      e.preventDefault();
+      const isSparepart = currentTab === "sparepart";
+      const editId = document.getElementById("editId").value;
+
+      const tanggal = document.getElementById("inputDate").value || getTodayISO();
+      const bukti = document.getElementById("inputProof").value.trim();
+      const keterangan = document.getElementById("inputDesc").value.trim().toUpperCase();
+      const jenis = document.getElementById("inputType").value;
+      const nominal = parseRupiahInput(document.getElementById("inputAmount").value);
+
+      const payload = {
+        bookKey: currentTab,
+        tanggal,
+        bukti,
+        keterangan,
+        topup: jenis === "topup" ? nominal : 0,
+        keluar: jenis === "keluar" ? nominal : 0,
+        status: isSparepart ? document.getElementById("inputStatus").value.trim().toUpperCase() : "",
+        hargaJual: isSparepart ? parseRupiahInput(document.getElementById("inputSalePrice").value) : 0
+      };
+
+      if (editId) {
+        payload.id = Number(editId);
+        await dbUpdateTransaction(payload);
+        resetForm();
+      } else {
+        await dbAddTransaction(payload);
+        document.getElementById("inputProof").value = "";
+        document.getElementById("inputDesc").value = "";
+        document.getElementById("inputAmount").value = "";
+        document.getElementById("inputStatus").value = "";
+        document.getElementById("inputSalePrice").value = "";
+        document.getElementById("inputDesc").focus();
+      }
+
+      await renderAll();
+    }
+
+    async function editRowById(id) {
+      const items = await dbGetTransactions(currentTab);
+      const item = items.find(x => x.id === id);
+      if (!item) return;
+
+      document.getElementById("editId").value = item.id;
+      document.getElementById("inputDate").value = item.tanggal || getTodayISO();
+      document.getElementById("inputProof").value = item.bukti || "";
+      document.getElementById("inputDesc").value = item.keterangan || "";
+
+      if (item.topup > 0) {
+        document.getElementById("inputType").value = "topup";
+        document.getElementById("inputAmount").value = new Intl.NumberFormat("id-ID").format(item.topup);
+      } else {
+        document.getElementById("inputType").value = "keluar";
+        document.getElementById("inputAmount").value = new Intl.NumberFormat("id-ID").format(item.keluar);
+      }
+
+      if (currentTab === "sparepart") {
+        document.getElementById("inputStatus").value = item.status || "";
+        document.getElementById("inputSalePrice").value = item.hargaJual ? new Intl.NumberFormat("id-ID").format(item.hargaJual) : "";
+      }
+
+      handleTypeChange();
+      document.getElementById("btnSubmitText").innerText = "Perbarui Data";
+      document.getElementById("formTitle").innerText = `Edit Catatan (ID: ${id})`;
+      document.getElementById("editIndicator").classList.remove("hidden");
+      document.getElementById("btnCancelEdit").classList.remove("hidden");
+      
+      document.getElementById("entryForm").scrollIntoView({ behavior: 'smooth', block: 'center' });
+      document.getElementById("inputDesc").focus();
+    }
+
+    function cancelEdit() { resetForm(); }
+
+    async function deleteRowById(id) {
+      if (confirm(`Hapus catatan ini dari Supabase?`)) {
+        await dbDeleteTransaction(id);
+        await renderAll();
+      }
+    }
+
+    async function updateTitle(newTitle) {
+      const meta = (await dbGetMeta(currentTab)) || { bookKey: currentTab, initialBalance: 0 };
+      meta.title = newTitle;
+      await dbSetMeta(meta);
+      await renderAll();
+    }
+
+    async function updateInitialBalance(valStr) {
+      const num = parseRupiahInput(valStr);
+      const meta = (await dbGetMeta(currentTab)) || { bookKey: currentTab, title: "" };
+      meta.initialBalance = num;
+      await dbSetMeta(meta);
+      await renderAll();
+    }
+
+    async function confirmNewMonth() {
+      closeMobileMenu();
+      const computed = await getComputedData(currentTab);
+      const now = new Date();
+      const currentMonthName = getMonthNameIndo(now.getMonth());
+      const currentYear = now.getFullYear();
+      const labelBuku = currentTab === "petty" ? "PETTY CASH" : "SPAREPART";
+
+      if (!confirm(`TUTUP BULAN ${labelBuku} DI SUPABASE?\n\n• Saldo akhir (${formatRupiah(computed.finalBalance)}) menjadi Saldo Awal.\n• Semua catatan transaksi ${labelBuku} akan dikosongkan.`)) return;
+
+      await dbClearTransactions(currentTab);
+      await dbSetMeta({
+        bookKey: currentTab,
+        title: `PENGELUARAN ${labelBuku} BULAN ${currentMonthName} ${currentYear}`,
+        initialBalance: computed.finalBalance
+      });
+
+      await renderAll();
+      alert(`Buku ${labelBuku} berhasil ditutup untuk bulan baru!`);
+    }
+
+    /* ==========================================================================
+       SIDEBAR & EXCEL
+       ========================================================================== */
+    function toggleDesktopSidebar() {
+      const sidebar = document.getElementById("sidebar");
+      const label = document.getElementById("labelDesktopToggle");
+      const isClosed = sidebar.classList.toggle("sidebar-desktop-closed");
+      label.innerText = isClosed ? "Buka Menu" : "Tutup Menu";
+    }
+
+    function openMobileMenu() {
+      document.getElementById("sidebar").classList.remove("-translate-x-full");
+      document.getElementById("mobileBackdrop").classList.remove("hidden");
+    }
+
+    function closeMobileMenu() {
+      document.getElementById("sidebar").classList.add("-translate-x-full");
+      document.getElementById("mobileBackdrop").classList.add("hidden");
+    }
+
+    async function exportToExcel() {
+      closeMobileMenu();
+      const wb = XLSX.utils.book_new();
+
+      const pettyComp = await getComputedData("petty");
+      const pettyRows = [
+        [], ["", pettyComp.meta.title], [],
+        ["", "TANGGAL", "BUKTI", "KETERANGAN", "Top Up", "Keluar", "Saldo"],
+        ["", "", "", "SISA SALDO PETTY CASH", pettyComp.initialBalance, "", pettyComp.initialBalance]
+      ];
+      pettyComp.entries.forEach(r => pettyRows.push(["", r.tanggal, r.bukti, r.keterangan, r.topup || "", r.keluar || "", r.calculatedBalance]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pettyRows), "PETTY CASH");
+
+      const spareComp = await getComputedData("sparepart");
+      const spareRows = [
+        [], ["", spareComp.meta.title], [],
+        ["", "TANGGAL", "BUKTI", "KETERANGAN", "Top Up", "Keluar (harga modal part)", "Saldo", "STATUS", "HARGA JUAL"],
+        ["", "", "", "SISA SALDO SPAREPART", spareComp.initialBalance, "", spareComp.initialBalance, "", ""]
+      ];
+      spareComp.entries.forEach(r => spareRows.push(["", r.tanggal, r.bukti, r.keterangan, r.topup || "", r.keluar || "", r.calculatedBalance, r.status || "", r.hargaJual || ""]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(spareRows), "SPAREPART");
+
+      XLSX.writeFile(wb, `CATATAN_KAS_${getTodayISO()}.xlsx`);
+    }
+
+    function handleExcelImport(event) {
+      closeMobileMenu();
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+
+          for (const sheetName of workbook.SheetNames) {
+            const upper = sheetName.toUpperCase();
+            const ws = workbook.Sheets[sheetName];
+            if (upper.includes("PETTY")) await parseExcelSheet(ws, "petty");
+            else if (upper.includes("SPARE")) await parseExcelSheet(ws, "sparepart");
+          }
+
+          await renderAll();
+          alert("Impor file ke Supabase Cloud berhasil diselesaikan!");
+        } catch (err) {
+          console.error(err);
+          alert("Gagal membaca file Excel.");
+        } finally {
+          event.target.value = "";
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    async function parseExcelSheet(ws, bookKey) {
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      if (!rows || rows.length < 5) return;
+
+      let title = rows[1] && rows[1][1] ? String(rows[1][1]).trim() : "";
+      let initialBalance = 0;
+      const row5 = rows[4] || [];
+      for (let c = 3; c < row5.length; c++) {
+        const parsed = typeof row5[c] === 'number' ? row5[c] : parseRupiahInput(row5[c]);
+        if (parsed > 0) { initialBalance = parsed; break; }
+      }
+
+      await dbSetMeta({ bookKey, title: title || (await dbGetMeta(bookKey)).title, initialBalance });
+
+      for (let r = 5; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || row.length === 0) continue;
+        const ket = (row[3] || row[2] || "").toString().trim().toUpperCase();
+        if (!ket || ket.includes("TOTAL") || ket.includes("SISA SALDO")) continue;
+
+        let tgl = getTodayISO();
+        if (row[1]) {
+          if (row[1] instanceof Date) {
+            const d = row[1];
+            tgl = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          } else {
+            const m = String(row[1]).match(/(\d{4})[\-\/](\d{1,2})[\-\/](\d{1,2})/);
+            if (m) tgl = `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+          }
+        }
+
+        const topupVal = typeof row[4] === 'number' ? row[4] : parseRupiahInput(row[4]);
+        const keluarVal = typeof row[5] === 'number' ? row[5] : parseRupiahInput(row[5]);
+
+        await dbAddTransaction({
+          bookKey,
+          tanggal: tgl,
+          bukti: (row[2] || "").toString().trim(),
+          keterangan: ket,
+          topup: topupVal || 0,
+          keluar: keluarVal || 0,
+          status: (row[7] || "").toString().trim().toUpperCase(),
+          hargaJual: typeof row[8] === 'number' ? row[8] : parseRupiahInput(row[8])
+        });
+      }
+    }
+
+    /* ==========================================================================
+       START APP
+       ========================================================================== */
+    window.addEventListener("DOMContentLoaded", async () => {
+      document.getElementById("inputDate").value = getTodayISO();
+      initSupabase();
+      await switchBook("petty");
+    });
+  </script>
+</body>
+</html>
